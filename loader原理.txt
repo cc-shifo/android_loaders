@@ -1,0 +1,63 @@
+四、Loader，AsynTaskLoader以及LoaderManager
+deliverResult()-->mListener.onLoadComplete()-->mCallbacks.onLoadFinished()
+		  其中mListener是OnLoadCompleteListener接口的引用，
+		  LoaderInfo实现了这个接口。
+		  因此，说明了当Loader完成数据加载后会回调LoaderInfo的
+		  onLoadComplete()方法。
+		  onLoadComplete()最终会调用onLoadFinished()。
+		  onCreateLoader，onLoadFinished，onCreateLoader是LoaderCallbacks接口的API。
+
+		  其中mCallbacks是LoaderCallbacks接口的引用，LoaderCallbacks接口被
+		  声明在LoaderManager中，LoaderInfo实现了这个接口。
+LoaderManager定义了作为Loader的管理者应该有哪些操作，而LoaderManagerImpl则具体实现
+这些操作。mLoaders是一个SparseArray(LoaderInfo)的映射，通过LoaderInfo，Loader管理者的实现
+LoaderManagerImpl可以调用LoaderCallbacks的onLoadFinished()
+
+那么这里的mCallbacks充当了什么角色呢？其实它应该相当于一个面包师Loader和面包店店长
+LoaderManager的中间桥梁。当店长需要面包师的时候就会调用onCreateLoader()来获得一个
+面包师。同样当面包师完成面包的烤制工作后，就会调用onLoadFinished()来告诉店长面包做好了。
+但实际情况应该不会如此，面包做好了服务员应该会直接将面包传递给顾客。
+class LoaderInfo#void start()
+-- mLoader = mCallbacks.onCreateLoader(mId, mArgs)
+-- mLoader.startLoading()
+   -- onStartLoading()
+      这个函数是我们要实现的。我们暂时调用forceLoad()。forceLoad调用了onForceLoad()
+      其实Loader.java的onContentChanged()也是调用了forceLoad()函数。
+      AsyncTaskLoader.java实现了Loader的onForceLoad()这个函数
+      onForceLoad()
+      -- executePendingTask()
+         -- mTask.executeOnExecutor(mExecutor, (Void[]) null)
+            mTask是LoadTask的实例, LoadTask是class AsyncTaskLoader的内部类。
+            在class LoadTask中
+            -- doInBackground()
+               用过AsyncTask的应该都了解，异步操作都是放在这里执行的。
+               -- AsyncTaskLoader.this.onLoadInBackground()
+                  -- loadInBackground()
+                     这个loadInBackground()是不是有点熟悉了？没错这就是
+                     我们在Baker中重写的方法。
+                     OK,到这里面包已经烤完（耗时操作），接着就看这些香喷喷
+                     的面包怎么到顾客(Activity或者Fragment，ApiDemo的LoaderCustom例子
+                     中，这个角色由ListFrament充当)的手里的吧？
+                     onPostExecute()会将面包送到顾客哪里。
+                     -- dispatchOnLoadComplete()
+                        -- deliverResult()
+                           deliverResult()是Loader的Api
+                           -- mListener.onLoadComplete(this, data)
+                              这里的mListener就是之前的OnLoadCompleteListener接口的引用。
+                              在class LoaderInfo的start函数中调用
+                              mLoader.registerListener(mId, this)给注册的。现在回到
+                              class LoaderInfo的onLoadComplete函数。
+                              -- callOnLoadFinished()
+                                 传入的data是新数据，mData是初始数据为null。
+                                 mStarted是在LoaderManager.java的doStart()赋值的。
+                                 -- mCallbacks.onLoadFinished(loader, data)
+                                    这里的mCallbacks就是我们在new LoaderInfo时传入的
+                                    LoaderManager.LoaderCallbacks。
+                                    在restartLoader--createAndInstallLoader--createLoader
+                                    创建了LoaderInfo，也就是从这里传入了我们实现的
+                                    LoaderManager.LoaderCallbacks接口的实例。绕来绕去的，
+                                    就是调用了我们实现的onLoadFinished(在Activity或者
+                                    Fragment中显示数据)。简单的说就是
+                                    onLoadComplete()--callOnLoadFinished()--onLoadFinished()
+                                    也说明了OnLoadCompleteListener接口，LoaderCallbacks接口
+                                    的关系是通过callOnLoadFinished关联起来的。
